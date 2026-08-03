@@ -1,0 +1,10 @@
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.csv text eol=lf
+
+*.png binary
+*.pptx binary
+*.docx binary
+*.pdf binary

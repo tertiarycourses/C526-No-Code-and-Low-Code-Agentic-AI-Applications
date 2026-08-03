@@ -1,0 +1,8 @@
+~$*
+.DS_Store
+*.tmp
+*.bak
+__pycache__/
+*.pyc
+.qa-render*/
+.qa-extract/
