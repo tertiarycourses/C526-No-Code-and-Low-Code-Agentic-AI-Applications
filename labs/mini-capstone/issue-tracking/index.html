@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Report an Issue — Scan to Submit</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --panel: #111a2e;
+      --panel-2: #16223c;
+      --border: #233149;
+      --text: #e6ecf7;
+      --muted: #8aa0c2;
+      --accent: #4f8cff;
+      --accent-2: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 80% -10%, #16223c 0%, var(--bg) 55%);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 34px 30px 28px;
+      text-align: center;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    }
+    .emoji { font-size: 40px; }
+    h1 { margin: 10px 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+    p.sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .field { text-align: left; margin: 0 0 16px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .row { display: flex; gap: 8px; }
+    input[type="text"] {
+      flex: 1;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 11px 13px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 11px 16px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:hover { filter: brightness(1.08); }
+    .qr {
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      display: inline-block;
+      line-height: 0;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+      min-width: 272px;
+      min-height: 272px;
+    }
+    .qr img, .qr canvas { width: 240px !important; height: 240px !important; display: block; }
+    .qr .placeholder { color: #64748b; font-size: 13px; line-height: 240px; }
+    .hint { margin: 16px 0 18px; color: var(--muted); font-size: 13px; }
+    .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    a.btn, button.linklike {
+      text-decoration: none;
+      display: inline-block;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    a.primary { background: var(--accent); color: #fff; }
+    a.primary:hover { filter: brightness(1.08); }
+    a.secondary, button.linklike {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+    }
+    a.secondary:hover, button.linklike:hover { border-color: var(--accent); }
+    .url {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 11px;
+    }
+    .badge {
+      display: inline-block;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--accent-2);
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+      letter-spacing: 0.02em;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">n8n · Issue Reporting</span>
+    <div class="emoji">🛠️</div>
+    <h1>Report an Issue</h1>
+    <p class="sub">Paste your n8n <strong>form production URL</strong> to generate a QR code.
+      People scan it with their phone camera to open the submission form.</p>
+
+    <div class="field">
+      <label for="formUrl">Form production URL</label>
+      <div class="row">
+        <input id="formUrl" type="text"
+               placeholder="https://YOUR-N8N/form/&lt;id&gt;" />
+        <button id="genBtn">Generate</button>
+      </div>
+    </div>
+
+    <div class="qr" id="qr"><span class="placeholder">QR appears here</span></div>
+
+    <p class="hint">📷 Point your camera at the code — or tap the button below on this device.</p>
+
+    <div class="actions">
+      <a class="btn primary" id="openForm" href="#" target="_blank" rel="noopener">Open the Form</a>
+      <button class="linklike" id="downloadBtn">Download QR</button>
+      <a class="btn secondary" href="gallery.html">View Reports</a>
+    </div>
+
+    <div class="url" id="urlText">—</div>
+  </div>
+
+  <!-- QR generator (client-side, no build step) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const STORAGE_KEY = "issueFormUrl";
+    const DEFAULT_URL = "https://n8n.srv923061.hstgr.cloud/form/1fb86042-810c-4361-afe6-560506518116";
+
+    $("formUrl").value = localStorage.getItem(STORAGE_KEY) || DEFAULT_URL;
+
+    function generate() {
+      const url = $("formUrl").value.trim();
+      const box = $("qr");
+      box.innerHTML = "";
+
+      if (!url) {
+        box.innerHTML = '<span class="placeholder">Enter a URL first</span>';
+        return;
+      }
+      if (typeof QRCode === "undefined") {
+        box.innerHTML = '<span class="placeholder">QR library failed to load.<br>Check your connection.</span>';
+        return;
+      }
+
+      new QRCode(box, {
+        text: url,
+        width: 240,
+        height: 240,
+        colorDark: "#0b1120",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H,
+      });
+
+      localStorage.setItem(STORAGE_KEY, url);
+      $("openForm").href = url;
+      $("urlText").textContent = url;
+    }
+
+    function downloadQR() {
+      const canvas = $("qr").querySelector("canvas");
+      if (!canvas) { alert("Generate a QR code first."); return; }
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = "form-qr.png";
+      a.click();
+    }
+
+    $("genBtn").addEventListener("click", generate);
+    $("downloadBtn").addEventListener("click", downloadQR);
+    $("formUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") generate(); });
+
+    // Generate on load using the saved/default URL.
+    window.addEventListener("load", generate);
+  </script>
+  <footer style="text-align:center;padding:24px 16px;font-size:13px;opacity:.7;">
+    <p class="powered-by">Powered by <a href="https://www.tertiaryinfotech.com/" target="_blank" rel="noopener" style="color:inherit;">Tertiary Infotech Academy Pte Ltd</a></p>
+    <p class="powered-by">Powered by <a href="https://www.tertiaryinfotech.com/" target="_blank" rel="noopener">Tertiary Infotech Academy Pte Ltd</a></p>
+</footer>
+</body>
+</html>

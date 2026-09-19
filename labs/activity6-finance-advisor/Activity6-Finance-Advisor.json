@@ -1,0 +1,562 @@
+{
+  "name": "Activity 6 — Finance API to Telegram (AI Day-Trading Agent)",
+  "nodes": [
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        304,
+        384
+      ],
+      "id": "1e1d03a5-ae4a-49c3-b289-12b396c0c004",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        592,
+        400
+      ],
+      "id": "2b58d4bd-51de-48cc-a876-cb0fdc6c886e",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a highly intelligent and accurate sentiment analyzer specializing in the financial markets. Analyze the sentiment of the provided text\n\n- Evaluate the immediate market reaction, recent news impact, and technical volatility.\n- Determine a sentiment category: \"Positive\", \"Neutral\", or \"Negative\".\n- Calculate a numerical score between -1 (extremely negative) and 1 (extremely positive).\n- Provide a concise rationale explaining the short-term sentiment (give a detailed response with appropriate headlines for major events)\n\nYour output must be exactly a JSON object. The value must be an object with three keys: \"category\", \"score\", and \"rationale\". Do notoutput any additional text.\n\nFor example, your output should look like:\n\n{\n  \"shortTermSentiment\": {\n    \"category\": \"Positive\",\n    \"score\": 0.7,\n    \"rationale\": \"....\"\n  }\n}\n\nNow, analyze the following text and produce your JSON output:\n {{ JSON.stringify($json.articles) }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        480,
+        768
+      ],
+      "id": "5e1aa356-5cd0-435d-942f-06e8685cdfab",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        880,
+        560
+      ],
+      "id": "fc91751d-292e-4188-9428-ebabd7e5451a",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        560
+      ],
+      "id": "c457f12f-8c2c-4e52-99db-04b8cdeb753b",
+      "name": "Aggregate1"
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/everything",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Extract Ticker Symbol').item.json.text }}"
+            },
+            {
+              "name": "from",
+              "value": "={{$today.minus({ days: 1 }).toFormat('yy-MM-dd')}}"
+            },
+            {
+              "name": "apiKey",
+              "value": "YOUR_NEWS_API_KEY "
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        80,
+        768
+      ],
+      "id": "d70bafb3-a51e-4e0c-b269-c296e9ce9b83",
+      "name": "news"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert day trader. Using the data below, give a single, unified trade recommendation—Buy, Sell, or Hold—based on both price action (1m, 15m, 1h candles) and 24h sentiment. Then provide the recommendation, the key levels, AND a clear analysis explaining WHY.\n\nProvide your answer as plain text with bullet points and clear line breaks.\n\nTechnical Data (candles):\n{{ JSON.stringify($json.data[0]) }}\n\nSentiment Analysis (past 24h):\n{{ JSON.stringify($json.data[1]) }}\n\nEach candle object has:\n- timeframe: \"1m\", \"15m\", or \"1h\"\n- candles: [openTime, open, high, low, close, volume, …]\n\nSteps for the agent:\n1. Group candles by timeframe (1m, 15m, 1h).\n2. Use 1m & 15m action + indicators (RSI, MACD, trendlines) for optimal entry.\n3. Confirm trend with 1h data.\n4. Factor in sentiment to refine the Buy/Sell/Hold call.\n\n### Response format:\n• Stock: <ticker>\n• Technical Recommendation: <BUY|SELL|HOLD>\n• Entry Price: <number>\n• Stop-Loss: <number>\n• Target/Exit Price: <number>\n\n📊 Analysis (why this call):\n- Price Action: <what the 1m/15m/1h candles, trend and momentum indicators (RSI, MACD, trendlines) are showing>\n- Sentiment: <how the 24h news sentiment supports or conflicts with the technicals>\n- Reasoning: <2-4 sentences tying it together — why Buy/Sell/Hold now, and the main risk to the trade>",
+        "options": {
+          "systemMessage": "=You are an expert intraday (day-trading) analyst. You produce ONE decisive trade call — BUY, SELL, or HOLD — for a single stock, using multi-timeframe price action (1m, 15m, 1h candles) and the past-24h news sentiment you are given.\n\nCore rules:\n- Reason across ALL three timeframes: use 1m & 15m for entry timing and momentum (price structure, RSI, MACD, trendlines, support/resistance) and confirm the broader trend with 1h. Sentiment refines the technical read — it does not override it.\n- Be decisive: commit to exactly one of BUY, SELL, or HOLD. Derive Entry, Stop-Loss and Target from the actual candles (recent swing highs/lows), not round guesses. Stop-Loss and Target must sit on the correct sides of Entry for the chosen direction, with sensible risk/reward (aim ≥ 1:1.5). For HOLD, still state the levels you'd act on.\n- ROBUSTNESS — handle bad data gracefully. The input may be empty, partial, or an API error object (e.g. {\"code\":...,\"message\":...,\"status\":\"error\"}) instead of candles. If price data is missing or invalid, do NOT invent numbers: return HOLD with Entry/Stop-Loss/Target as N/A and say in Reasoning that price data was unavailable. If sentiment is missing, proceed on technicals alone and note it. Never fabricate prices or hallucinate news.\n- Use ONLY the data provided. Do not assume the current date, market hours, or any outside information. Keep numbers in the instrument's quoted currency and match the price precision of the candles.\n- This is informational analysis, not personalized financial advice.\n\nReturn EXACTLY this plain-text format — no markdown code fences, no text before or after:\n• Stock: <ticker>\n• Technical Recommendation: <BUY|SELL|HOLD>\n• Entry Price: <number or N/A>\n• Stop-Loss: <number or N/A>\n• Target/Exit Price: <number or N/A>\n\n📊 Analysis (why this call):\n- Price Action: <what the 1m/15m/1h candles, trend and momentum indicators show>\n- Sentiment: <how the 24h news sentiment supports or conflicts with the technicals>\n- Reasoning: <2-4 sentences: why BUY/SELL/HOLD now and the main risk to the trade>\n\n⚠️ Not financial advice."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1312,
+        560
+      ],
+      "id": "552f1916-985b-440b-852c-945b76e9ff26",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -272,
+        0
+      ],
+      "id": "e37a3422-3397-4de8-8c11-7a201b2ae459",
+      "name": "Telegram (Demo 2)",
+      "webhookId": "ced7ac28-0f81-42a6-8640-373280c996a9",
+      "credentials": {
+        "telegramApi": {
+          "id": "DxnORFpNl7rYItBc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram (Demo 2)').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1664,
+        560
+      ],
+      "id": "e441ad54-c304-49d5-9de2-a136722f412d",
+      "name": "Telegram (Demo 2)1",
+      "webhookId": "55777382-3d17-44f4-af68-f354b715348c",
+      "credentials": {
+        "telegramApi": {
+          "id": "DxnORFpNl7rYItBc",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.twelvedata.com/time_series",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $('Extract Ticker Symbol').item.json.text }}"
+            },
+            {
+              "name": "interval",
+              "value": "1min"
+            },
+            {
+              "name": "outputsize",
+              "value": "100"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_TWELVEDATA_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        80,
+        192
+      ],
+      "id": "a2933a48-fcaf-4f83-b339-e51f1743e696",
+      "name": "candles1min"
+    },
+    {
+      "parameters": {
+        "url": "https://api.twelvedata.com/time_series",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $('Extract Ticker Symbol').item.json.text }}"
+            },
+            {
+              "name": "interval",
+              "value": "15min"
+            },
+            {
+              "name": "outputsize",
+              "value": "100"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_TWELVEDATA_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        80,
+        400
+      ],
+      "id": "9feea6e7-acce-405a-97b9-3d344ffd3f05",
+      "name": "candles15min"
+    },
+    {
+      "parameters": {
+        "url": "https://api.twelvedata.com/time_series",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $('Extract Ticker Symbol').item.json.text }}"
+            },
+            {
+              "name": "interval",
+              "value": "1h"
+            },
+            {
+              "name": "outputsize",
+              "value": "100"
+            },
+            {
+              "name": "apikey",
+              "value": "YOUR_TWELVEDATA_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        80,
+        576
+      ],
+      "id": "31d66797-9174-43ca-a6ef-7478962bc7d6",
+      "name": "candles1hr"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        416,
+        976
+      ],
+      "id": "fe5b9696-3913-47e7-b817-4e4b154b9ea3",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "HncP6z2nrPdrEcFY",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1184,
+        768
+      ],
+      "id": "6f805861-242b-41ce-8d37-84f1af20f1b2",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "HncP6z2nrPdrEcFY",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a stock ticker resolver. From the user's message, identify the single stock the user is asking about and return ONLY its ticker symbol in uppercase — no quotes, punctuation, explanation, currency, or any extra words.\n\nRules:\n- If the user types a lowercase or misspelled ticker (e.g. \"appl\", \"tsla\", \"msft\"), normalize/correct it (appl -> AAPL, tsla -> TSLA, msft -> MSFT).\n- If the user names a company or asks a question (e.g. \"can I have apple stock\", \"how is tesla doing\", \"what about microsoft\"), return that company's ticker (Apple -> AAPL, Tesla -> TSLA, Microsoft -> MSFT, Amazon -> AMZN, Nvidia -> NVDA, Google/Alphabet -> GOOGL, Meta/Facebook -> META).\n- Return exactly one ticker. If you genuinely cannot determine one, return the user's text uppercased with all spaces removed.\n\nUser message: {{ $json.message.text }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "fc4a17fe-498f-4d13-8ac1-27c6f41e879c",
+      "name": "Extract Ticker Symbol"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -96,
+        208
+      ],
+      "id": "22d0e526-5314-4500-918e-e14a61492cde",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": "HncP6z2nrPdrEcFY",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "news": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Telegram (Demo 2)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram (Demo 2)": {
+      "main": [
+        [
+          {
+            "node": "Extract Ticker Symbol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Ticker Symbol": {
+      "main": [
+        [
+          {
+            "node": "candles1min",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "candles15min",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "candles1hr",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Ticker Symbol",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "candles1min": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "candles15min": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "candles1hr": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3bf78e5b-937f-4b0e-9c6e-11795c548c8a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fcdd11be6122db515fd1e031acff4a3eeab5f077f43f29bb025528511f775668"
+  },
+  "nodeGroups": [],
+  "id": "Hs0rL4V1JSbpqH8E",
+  "tags": []
+}
